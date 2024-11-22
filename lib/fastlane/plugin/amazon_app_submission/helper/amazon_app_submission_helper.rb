@@ -72,26 +72,47 @@ module Fastlane
       end
 
       def self.get_current_apk_id(token, app_id, edit_id)
-
         get_apks_path = "/v1/applications/#{app_id}/edits/#{edit_id}/apks"
         get_apks_url = BASE_URL + get_apks_path
-
+      
         uri = URI(get_apks_url)
         http = Net::HTTP.new(uri.host, uri.port)
         http.use_ssl = true
         req = Net::HTTP::Get.new(
-            uri.path,
-            'Authorization' => token,
-            'Content-Type' => 'application/json'
+          uri.path,
+          'Authorization' => token,
+          'Content-Type' => 'application/json'
         )
-
+      
         res = http.request(req)
         if !res.body.nil?
           apks = JSON.parse(res.body)
           firstAPK = apks.kind_of?(Array) ? apks[0] : apks
-          apk_id = firstAPK['id']
-          return apk_id
+          apk_info = { 'id' => firstAPK['id'], 'versionCode' => firstAPK['versionCode'] }
+          return apk_info
         end
+      end
+
+      def self.get_current_apk_ids(token, app_id, edit_id)
+        get_apks_path = "/v1/applications/#{app_id}/edits/#{edit_id}/apks"
+        get_apks_url = BASE_URL + get_apks_path
+      
+        uri = URI(get_apks_url)
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = true
+        req = Net::HTTP::Get.new(
+          uri.path,
+          'Authorization' => token,
+          'Content-Type' => 'application/json'
+        )
+      
+        res = http.request(req)
+        if !res.body.nil?
+          apks = JSON.parse(res.body)
+          apk_ids = apks.kind_of?(Array) ? apks.map { |apk| { 'id' => apk['id'], 'versionCode' => apk['versionCode'] } } : [{ 'id' => apks['id'], 'versionCode' => apks['versionCode'] }]
+          return apk_ids
+        end
+        return []
       end
 
       def self.get_current_apk_etag(token, app_id, edit_id, apk_id)
@@ -136,6 +157,7 @@ module Fastlane
         req.body = local_apk
         res = http.request(req)
         replace_apk_response = JSON.parse(res.body)
+
         # Retry again if replace failed
         if res.code == '412' && should_retry
           UI.message("replacing the apk failed, retrying uploading it again...")

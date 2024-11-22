@@ -26,16 +26,35 @@ module Fastlane
         UI.error("Creating new edit failed!")
         return
         end
-
+        
         if params[:upload_apk]
-          UI.message("Get current apk id")
-          current_apk_id = Helper::AmazonAppSubmissionHelper.get_current_apk_id(token, params[:app_id], current_edit_id)
+          UI.message("Get current APK IDs and versions")
+          current_apk_ids = Helper::AmazonAppSubmissionHelper.get_current_apk_ids(token, params[:app_id], current_edit_id)
+          
+          # UI.message("Deleting existing APKs")
+          # current_apk_ids.each do |apk_info|
+          #   apk_id = apk_info["id"]
+          #   version_code = apk_info["versionCode"]
+          #   UI.message("Fetching ETag for APK ID #{apk_id}, versionCode #{version_code}")
+          #   apk_eTag = Helper::AmazonAppSubmissionHelper.get_current_apk_etag(token, params[:app_id], current_edit_id, apk_id)
+          #   UI.message("Deleting APK ID #{apk_id}")
+          #   Helper::AmazonAppSubmissionHelper.delete_apk(token, params[:app_id], current_edit_id, apk_id, apk_eTag)
+          # end
 
-          UI.message("Get current apk ETag")
-          current_apk_eTag = Helper::AmazonAppSubmissionHelper.get_current_apk_etag(token, params[:app_id], current_edit_id, current_apk_id)
-
-          UI.message("Replacing the apk with apk from #{params[:apk_path]}")
-          replace_apk_response_code, replace_apk_response =  Helper::AmazonAppSubmissionHelper.replaceExistingApk(token, params[:app_id], current_edit_id, current_apk_id, current_apk_eTag, params[:apk_path])
+          if current_apk_ids.any?
+            oldest_apk = current_apk_ids.min_by { |apk_info| apk_info["versionCode"] }
+            UI.message("Replacing APK ID #{oldest_apk["id"]}, versionCode #{oldest_apk["versionCode"]}")
+            oldest_apk_id = oldest_apk["id"]
+            oldest_apk_eTag = Helper::AmazonAppSubmissionHelper.get_current_apk_etag(token, params[:app_id], current_edit_id, oldest_apk_id)
+            replace_apk_response_code, replace_apk_response = Helper::AmazonAppSubmissionHelper.replaceExistingApk(token, params[:app_id], current_edit_id, oldest_apk_id, oldest_apk_eTag, params[:apk_path])
+            if replace_apk_response_code != '200'
+              UI.message("Amazon app submission failed at replacing the apk error code #{replace_apk_response_code} and error respones #{replace_apk_response}")
+              return
+            end
+          else
+            UI.message("Uploading new APK from #{params[:apk_path]}")
+            Helper::AmazonAppSubmissionHelper.uploadNewApk(token, params[:app_id], current_edit_id, params[:apk_path])
+          end
         end
 
         if params[:upload_changelogs]
@@ -43,17 +62,11 @@ module Fastlane
           Helper::AmazonAppSubmissionHelper.update_listings( token, params[:app_id],current_edit_id, params[:changelogs_path], params[:changelogs_path])
         end
 
-        if params[:upload_apk]
-          if replace_apk_response_code == '200'
-            if params[:submit_for_review]
-               UI.message("Submitting to Amazon app store")
-               Helper::AmazonAppSubmissionHelper.commit_edit(token, params[:app_id], current_edit_id, edit_eTag)
-            end
-          else
-            UI.message("Amazon app submission failed at replacing the apk error code #{replace_apk_response_code} and error respones #{replace_apk_response}")
-            return
-          end
+        if params[:submit_for_review]
+          UI.message("Submitting to Amazon app store")
+          Helper::AmazonAppSubmissionHelper.commit_edit(token, params[:app_id], current_edit_id, edit_eTag)
         end
+        
         UI.message("Amazon app submission finished successfully!")
       end
 
